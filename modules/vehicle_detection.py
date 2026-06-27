@@ -161,14 +161,13 @@ class VehicleDetector:
         Run YOLO on `frame` and return a list of tracked Vehicle objects.
         Maintains an internal registry so vehicles carry their history.
         """
-        results = self.model.track(
-            frame,
-            conf=self.conf,
-            iou=self.iou,
-            device=self.device,
-            persist=True,          # enable ByteTrack / BoT-SORT tracking
-            verbose=False,
-        )
+       results = self.model.predict(
+   	 frame,
+   	 conf=self.conf,
+  	 iou=self.iou,
+   	 device=self.device,
+   	 verbose=False,
+)
 
         detected: list[Vehicle] = []
 
@@ -176,12 +175,12 @@ class VehicleDetector:
             return detected
 
         boxes = results[0].boxes
-        for box in boxes:
+        for idx, box in enumerate(boxes):
             cls_id = int(box.cls[0])
             if cls_id not in VEHICLE_CLASS_IDS:
                 continue
 
-            track_id = int(box.id[0]) if box.id is not None else -1
+            track_id = idx  # use index as ID since tracking is disabled
             conf = float(box.conf[0])
             bbox = box.xyxy[0].cpu().numpy().astype(float)
             class_name = VEHICLE_CLASS_IDS[cls_id]
