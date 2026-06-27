@@ -8,14 +8,16 @@ Real-time accident detection interface with:
   - Screenshot gallery
 """
 
-import json
-import time
-from pathlib import Path
-import sys
+import os
+os.environ["YOLO_CONFIG_DIR"] = "/tmp/Ultralytics"
+os.environ["MPLCONFIGDIR"] = "/tmp/matplotlib"
 
 import cv2
 import numpy as np
 import streamlit as st
+from pathlib import Path
+import json
+import time
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
