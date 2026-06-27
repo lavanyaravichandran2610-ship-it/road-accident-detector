@@ -9,23 +9,24 @@ Real-time accident detection interface with:
 """
 
 import os
+import sys
+from pathlib import Path
+
+# Set environment variables FIRST before any other imports
 os.environ["YOLO_CONFIG_DIR"] = "/tmp/Ultralytics"
 os.environ["MPLCONFIGDIR"] = "/tmp/matplotlib"
-
-import cv2
-import numpy as np
-import streamlit as st
-from pathlib import Path
-import json
-import time
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-# Lazy imports — only load heavy libraries when user clicks Start
-# This prevents memory crash on startup
-import importlib
+import cv2
+import numpy as np
+import streamlit as st
+import json
+import time
 
+# Lazy imports - only load heavy modules when user clicks Start
+# This prevents crashes on startup
 # ──────────────────────────────────────────────────────────────────────────────
 # Page config
 # ──────────────────────────────────────────────────────────────────────────────
@@ -288,11 +289,15 @@ def _render_gallery():
 # ──────────────────────────────────────────────────────────────────────────────
 
 if start_btn:
-    # Import heavy modules only when needed
-    from modules.video_input import VideoInputHandler, extract_thumbnail
+    if video_source is None:
+        st.error("Please select a video source first.")
+        st.stop()
+
+    # Import heavy modules only when user clicks Start
+    from modules.video_input import VideoInputHandler
     from modules.vehicle_detection import VehicleDetector
     from modules.accident_detection import AccidentDetector, draw_accidents
-    from modules.alert_system import AlertManager, print_alert
+    from modules.alert_system import AlertManager
     if video_source is None:
         st.error("Please select a video source first.")
         st.stop()
