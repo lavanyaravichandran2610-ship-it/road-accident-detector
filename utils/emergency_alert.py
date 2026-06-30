@@ -1,8 +1,3 @@
-"""
-Emergency Alert System
-Finds nearest hospital using OpenStreetMap (FREE - no API key needed!)
-Sends SMS via Twilio and email via Gmail.
-"""
 import smtplib
 import requests
 import logging
@@ -65,24 +60,25 @@ def calculate_distance_km(lat1, lng1, lat2, lng2):
 
 
 def get_live_location():
-    try:
-        r = requests.get("https://ipapi.co/json/", timeout=10)
-        data = r.json()
-        return {
-            "lat": data.get("latitude", CAMERA_LOCATION["lat"]),
-            "lng": data.get("longitude", CAMERA_LOCATION["lng"]),
-            "city": data.get("city", "Tiruppur"),
-            "region": data.get("region", "Tamil Nadu"),
-            "country": data.get("country_name", "India"),
-        }
-    except Exception:
-        return {
-            "lat": CAMERA_LOCATION["lat"],
-            "lng": CAMERA_LOCATION["lng"],
-            "city": "Tiruppur",
-            "region": "Tamil Nadu",
-            "country": "India",
-        }
+    """
+    Returns the FIXED camera location (CAMERA_LOCATION).
+    We deliberately do NOT use IP-based geolocation here, because on
+    cloud hosting (Streamlit Cloud, Render, etc.) the server's IP
+    location has nothing to do with where the physical camera is
+    installed - it would return the data center's location instead,
+    causing wildly wrong hospital/police results.
+
+    CAMERA_LOCATION is set explicitly per camera (see CAMERA_REGISTRY
+    in app.py) using its real installed GPS coordinates.
+    """
+    city = CAMERA_LOCATION["name"].split(",")[0].strip()
+    return {
+        "lat": CAMERA_LOCATION["lat"],
+        "lng": CAMERA_LOCATION["lng"],
+        "city": city,
+        "region": "Tamil Nadu",
+        "country": "India",
+    }
 
 
 def find_nearest_place(place_type, lat, lng):
