@@ -73,7 +73,7 @@ class AccidentEvent:
 
 class AccidentDetector:
     def __init__(self, iou_collision_threshold=0.15, speed_drop_ratio=0.20, rollover_ratio_change=0.55,
-                 cooldown_frames=45, min_speed_for_stop=4.0, min_vehicle_history=8):
+                 cooldown_frames=120, min_speed_for_stop=4.0, min_vehicle_history=8):
         self.iou_threshold = iou_collision_threshold
         self.speed_drop_ratio = speed_drop_ratio
         self.rollover_ratio_change = rollover_ratio_change
