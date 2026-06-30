@@ -3,7 +3,6 @@ Emergency Alert System
 Finds nearest hospital using OpenStreetMap (FREE - no API key needed!)
 Sends SMS via Twilio and email via Gmail.
 """
-
 import smtplib
 import requests
 import logging
