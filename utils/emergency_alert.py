@@ -27,11 +27,21 @@ try:
     EMAIL_PASSWORD = st.secrets.get("EMAIL_PASSWORD", "YOUR_APP_PASSWORD")
     NTFY_TOPIC = st.secrets.get("NTFY_TOPIC", "road-accident-alert")
     CONTROL_ROOM_EMAIL = st.secrets.get("CONTROL_ROOM_EMAIL", "your@gmail.com")
+
+    # Twilio - OPTIONAL. Leave blank in secrets to disable auto-call entirely.
+    TWILIO_ACCOUNT_SID = st.secrets.get("TWILIO_ACCOUNT_SID", "")
+    TWILIO_AUTH_TOKEN  = st.secrets.get("TWILIO_AUTH_TOKEN", "")
+    TWILIO_FROM_NUMBER = st.secrets.get("TWILIO_FROM_NUMBER", "")
+    TWILIO_CALL_TO     = st.secrets.get("TWILIO_CALL_TO", "")  # must be a verified number on trial accounts
 except Exception:
     EMAIL_SENDER = "your@gmail.com"
     EMAIL_PASSWORD = "YOUR_APP_PASSWORD"
     NTFY_TOPIC = "road-accident-alert"
     CONTROL_ROOM_EMAIL = "your@gmail.com"
+    TWILIO_ACCOUNT_SID = ""
+    TWILIO_AUTH_TOKEN  = ""
+    TWILIO_FROM_NUMBER = ""
+    TWILIO_CALL_TO     = ""
 
 EMERGENCY_NUMBERS = {
     "ambulance": "108",
@@ -39,6 +49,8 @@ EMERGENCY_NUMBERS = {
     "fire": "101",
     "emergency": "112",
 }
+
+AUTO_CALL_ENABLED = bool(TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_FROM_NUMBER and TWILIO_CALL_TO)
 
 
 def calculate_distance_km(lat1, lng1, lat2, lng2):
@@ -116,7 +128,6 @@ def find_nearest_place(place_type, lat, lng):
                     "maps_dir": f"https://www.google.com/maps/dir/{lat},{lng}/{place_lat},{place_lng}",
                     "auto_detected": True,
                 })
-                logger.info("Auto-detected %s: %s (%s km)", place_label, name, dist)
 
     except Exception as e:
         logger.warning("Auto-detect %s failed: %s", place_label, e)
@@ -160,8 +171,54 @@ def send_ntfy(accident_type, confidence, location, hospital, police, maps_link, 
         return False
 
 
+def make_auto_call(accident_type, confidence, location, hospital, police):
+    """
+    OPTIONAL Twilio voice call - only runs if all Twilio secrets are configured.
+    On a free Twilio trial, TWILIO_CALL_TO MUST be a verified number
+    (Twilio Console -> Phone Numbers -> Verified Caller IDs).
+    """
+    if not AUTO_CALL_ENABLED:
+        logger.info("Auto-call skipped - Twilio not configured")
+        return False
+
+    try:
+        from twilio.rest import Client
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+
+        urgency = "critical" if confidence > 0.85 else "moderate"
+
+        twiml = (
+            "<Response>"
+            "<Say voice='alice' loop='2'>"
+            f"Automated traffic accident alert. "
+            f"A {urgency} severity {accident_type} has been detected "
+            f"at {location['city']}, {location['region']}. "
+            f"Confidence level {int(confidence * 100)} percent. "
+            f"Nearest hospital is {hospital['name']}, "
+            f"{hospital['distance_text']}. "
+            f"Nearest police station is {police['name']}, "
+            f"{police['distance_text']}. "
+            f"Please dispatch emergency services immediately. "
+            f"This is an automated message from the traffic monitoring system."
+            "</Say>"
+            "</Response>"
+        )
+
+        call = client.calls.create(
+            twiml=twiml,
+            from_=TWILIO_FROM_NUMBER,
+            to=TWILIO_CALL_TO,
+        )
+        logger.info("Auto-call placed to %s | SID: %s", TWILIO_CALL_TO, call.sid)
+        return True
+
+    except Exception as e:
+        logger.error("Auto-call failed: %s", e)
+        return False
+
+
 def send_control_room_email(accident_type, confidence, timestamp_s, hospital, police,
-                              location, maps_link, time_str, screenshot_path=None):
+                              location, maps_link, time_str, screenshot_path=None, call_made=False):
     try:
         urgency = "CRITICAL" if confidence > 0.85 else "MODERATE"
         urgency_color = "#c0392b" if urgency == "CRITICAL" else "#e67e22"
@@ -174,6 +231,15 @@ def send_control_room_email(accident_type, confidence, timestamp_s, hospital, po
         hospital_dist = hospital.get("distance_text", "Unknown distance")
         police_dist = police.get("distance_text", "Unknown distance")
 
+        call_status_html = ""
+        if AUTO_CALL_ENABLED:
+            call_status_html = f"""
+            <div style="background:{'#d4edda' if call_made else '#f8d7da'};padding:12px;border-radius:6px;margin:10px 0;">
+              <b>{'✅ Automated voice call placed' if call_made else '⚠️ Automated voice call failed'}</b>
+              to verified number for this alert.
+            </div>
+            """
+
         body = f"""
         <html>
         <body style="font-family:Arial,sans-serif;background:#f4f4f4;padding:20px;">
@@ -184,8 +250,9 @@ def send_control_room_email(accident_type, confidence, timestamp_s, hospital, po
           </div>
 
           <div style="background:white;padding:20px;margin-top:10px;border-radius:8px;">
-            <p><b>Action required:</b> Dispatch emergency services to the location below.
-            This alert was generated automatically — no manual report was filed.</p>
+            {call_status_html}
+
+            <p><b>Action required:</b> Dispatch emergency services to the location below.</p>
 
             <h3 style="color:{urgency_color};border-bottom:2px solid {urgency_color};padding-bottom:5px;">
               Accident Details
@@ -341,9 +408,17 @@ def trigger_emergency_response(accident_type, confidence, timestamp_s, screensho
     ntfy_ok = send_ntfy(accident_type, confidence, location, hospital, police, maps_link, time_str)
     print(f"  Ntfy      : {'OK' if ntfy_ok else 'FAILED'}")
 
+    call_ok = False
+    if AUTO_CALL_ENABLED:
+        call_ok = make_auto_call(accident_type, confidence, location, hospital, police)
+        print(f"  Auto-Call : {'OK' if call_ok else 'FAILED'}")
+    else:
+        print("  Auto-Call : Disabled (Twilio not configured in secrets)")
+
     email_ok = send_control_room_email(
         accident_type, confidence, timestamp_s,
         hospital, police, location, maps_link, time_str, screenshot_path,
+        call_made=call_ok,
     )
     print(f"  Email     : {'OK' if email_ok else 'FAILED'}")
     print("=" * 55)
@@ -353,5 +428,6 @@ def trigger_emergency_response(accident_type, confidence, timestamp_s, screensho
         "police": police,
         "location": location,
         "ntfy": ntfy_ok,
+        "call": call_ok,
         "email": email_ok,
     }
